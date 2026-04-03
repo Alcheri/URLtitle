@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "limnoria-urltitle"
+version = "1.0.0"
+description = "Display page titles for URLs posted in chat."
+readme = "README.md"
+requires-python = ">=3.6"
+license = { file = "LICENCE.md" }
+authors = [{ name = "Barry Suridge" }]
+dependencies = ["beautifulsoup4", "requests"]
+classifiers = [
+    "Environment :: Plugins",
+    "Programming Language :: Python :: 3",
+    "Topic :: Communications :: Chat",
+]
+
+[project.entry-points.'limnoria.plugins']
+URLtitle = "limnoria_urltitle"
+
+[tool.setuptools.package-dir]
+"limnoria_urltitle" = "."
+"limnoria_urltitle.local" = "local/"
+
+[tool.setuptools.package-data]
+"limnoria_urltitle" = ["locales/*.po"]
+
+[project.urls]
+Homepage = "https://github.com/Alcheri/URLtitle"
+Source = "https://github.com/Alcheri/URLtitle"
+Issues = "https://github.com/Alcheri/URLtitle/issues"
