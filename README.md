@@ -1,3 +1,5 @@
+<!-- A simple plugin that detects URLs in a channel and returns the page title. -->
+
 <h1 align="center">URLtitle</h1>
 
 <!-- README_HEADER:start -->
