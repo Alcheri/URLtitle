@@ -20,7 +20,6 @@
 </p>
 <!-- README_HEADER:end -->
 
-
 # Description
 
 A simple plugin that detects URLs in a channel and returns the page title.
@@ -36,7 +35,7 @@ git clone https://github.com/Alcheri/URLtitle.git
 To install additional requirements, run from /plugins/URLtitle:
 
 ```plaintext
-pip install --upgrade -r requirements.txt 
+pip install --upgrade -r requirements.txt
 ```
 
 Next, load the plugin:
@@ -57,4 +56,4 @@ Next, load the plugin:
   Limnoria URLtitle identifier.
 
 <br/><br/>
-<p align="center">Copyright © MMXXIV, Barry Suridge</p>
+<p align="center">Copyright © 2016 - 2026, Barry Suridge</p>

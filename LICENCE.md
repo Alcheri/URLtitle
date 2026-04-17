@@ -1,6 +1,6 @@
 # BSD 3-Clause Licence
 
-Copyright © 2025, Barry Suridge All rights reserved.
+Copyright © 2016 - 2026, Barry Suridge All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 
