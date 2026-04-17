@@ -57,3 +57,8 @@ Next, load the plugin:
 
 <br/><br/>
 <p align="center">Copyright © 2016 - 2026, Barry Suridge</p>
+
+## Python Source Header Policy
+
+- In Python 3 files, do not add `# -*- coding: utf-8 -*-` unless a non-default source encoding is required.
+- Use `#!/usr/bin/env python3` only for executable scripts, not import-only modules.
