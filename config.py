@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 ###
-# Copyright (c) 2016 - 2020, Barry Suridge
+# Copyright (c) 2016 - 2026, Barry Suridge
 # All rights reserved.
 #
 #
