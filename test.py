@@ -33,7 +33,9 @@ class URLtitleTestCase(unittest.TestCase):
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
-        with patch.object(self.plugin, "registryValue", side_effect=self._registry_value):
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
             first = self.plugin.fetch_title("https://example.com")
             second = self.plugin.fetch_title("https://example.com")
 
@@ -50,7 +52,9 @@ class URLtitleTestCase(unittest.TestCase):
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
-        with patch.object(self.plugin, "registryValue", side_effect=self._registry_value):
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
             result = self.plugin.fetch_title("https://example.com/no-title")
         self.assertEqual(
             result, "Title for https://example.com/no-title: No title found"
@@ -58,13 +62,17 @@ class URLtitleTestCase(unittest.TestCase):
 
     @patch("URLtitle.plugin.requests.get", side_effect=RequestException("boom"))
     def testFetchTitleRequestError(self, mock_get):
-        with patch.object(self.plugin, "registryValue", side_effect=self._registry_value):
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
             result = self.plugin.fetch_title("https://bad.example")
         self.assertEqual(result, "Error fetching https://bad.example: boom")
 
     @patch("URLtitle.plugin.requests.get", side_effect=ReadTimeout("too slow"))
     def testFetchTitleTimeoutError(self, mock_get):
-        with patch.object(self.plugin, "registryValue", side_effect=self._registry_value):
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
             result = self.plugin.fetch_title("https://slow.example")
         self.assertEqual(
             result,
@@ -77,7 +85,9 @@ class URLtitleTestCase(unittest.TestCase):
         fake_irc = MagicMock()
         fake_irc.network = "testnet"
 
-        with patch.object(self.plugin, "registryValue", side_effect=self._registry_value):
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
             with patch.object(
                 self.plugin,
                 "fetch_title",
@@ -101,7 +111,9 @@ class URLtitleTestCase(unittest.TestCase):
         mock_response.url = "https://example.com/article/123"
         mock_get.return_value = mock_response
 
-        with patch.object(self.plugin, "registryValue", side_effect=self._registry_value):
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
             from_short = self.plugin.fetch_title("https://tinyurl.com/abcd1234")
             from_resolved = self.plugin.fetch_title("https://example.com/article/123")
 
