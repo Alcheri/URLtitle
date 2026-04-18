@@ -49,4 +49,13 @@ conf.registerGlobalValue(
     ),
 )
 
+conf.registerChannelValue(
+    URLtitle,
+    "showExpandedShortUrl",
+    registry.Boolean(
+        False,
+        _("""Show expanded URL when a supported short link is resolved?"""),
+    ),
+)
+
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

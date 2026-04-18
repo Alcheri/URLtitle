@@ -7,6 +7,8 @@
 
 import re
 import time
+from urllib.parse import urlparse
+
 import requests
 from requests import RequestException, Timeout
 
@@ -26,6 +28,14 @@ DEFAULT_USER_AGENT = "Limnoria-URLtitle/1.0 (+https://github.com/Alcheri/URLtitl
 URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)")
 CACHE_TTL_SECONDS = 600
 REQUEST_TIMEOUT_SECONDS = 10
+SUPPORTED_SHORTENER_HOSTS = (
+    "bit.ly",
+    "www.bit.ly",
+    "tinyurl.com",
+    "www.tinyurl.com",
+    "minily.me",
+    "www.minily.me",
+)
 
 
 class URLtitle(callbacks.Plugin):
@@ -43,6 +53,16 @@ class URLtitle(callbacks.Plugin):
     def _request_headers(self):
         return {"User-Agent": self.registryValue("userAgent")}
 
+    def _hostname_for_url(self, url):
+        try:
+            parsed = urlparse(url)
+        except ValueError:
+            return ""
+        return (parsed.hostname or "").lower()
+
+    def _is_supported_shortener_url(self, url):
+        return self._hostname_for_url(url) in SUPPORTED_SHORTENER_HOSTS
+
     def _format_request_error(self, url, error):
         if isinstance(error, Timeout):
             return (
@@ -53,11 +73,18 @@ class URLtitle(callbacks.Plugin):
         error_message = str(error).strip() or error.__class__.__name__
         return f"Error fetching {url}: {error_message}"
 
-    def fetch_title(self, url):
+    def fetch_title(self, url, return_resolved_url=False):
         # Check the cache first to avoid duplicate network calls.
         if url in self.cache:
-            title, timestamp = self.cache[url]
+            cached = self.cache[url]
+            if len(cached) == 3:
+                title, timestamp, resolved_url = cached
+            else:
+                title, timestamp = cached
+                resolved_url = url
             if time.time() - timestamp < CACHE_TTL_SECONDS:
+                if return_resolved_url:
+                    return title, resolved_url
                 return title
 
         try:
@@ -66,6 +93,12 @@ class URLtitle(callbacks.Plugin):
                 url, headers=self._request_headers(), timeout=REQUEST_TIMEOUT_SECONDS
             )
             response.raise_for_status()
+            resolved_url = url
+            response_url = getattr(response, "url", None)
+            if isinstance(response_url, str) and response_url:
+                resolved_url = response_url
+            if self._is_supported_shortener_url(url) and resolved_url != url:
+                self.log.debug(f"Resolved short URL {url} -> {resolved_url}")
 
             # Parse the HTML and extract the title
             soup = BeautifulSoup(response.text, "html.parser")
@@ -74,14 +107,26 @@ class URLtitle(callbacks.Plugin):
             if title_tag:
                 formatted_title = title_tag.get_text(strip=True)
             else:
-                formatted_title = f"Title for {url}: No title found"
+                formatted_title = f"Title for {resolved_url}: No title found"
 
             # Update the cache
-            self.cache[url] = (formatted_title, time.time())
+            cache_timestamp = time.time()
+            self.cache[url] = (formatted_title, cache_timestamp, resolved_url)
+            if resolved_url != url:
+                self.cache[resolved_url] = (
+                    formatted_title,
+                    cache_timestamp,
+                    resolved_url,
+                )
+            if return_resolved_url:
+                return formatted_title, resolved_url
             return formatted_title
         except RequestException as e:
             self.log.error(f"Error fetching {url}: {e}")
-            return self._format_request_error(url, e)
+            error_text = self._format_request_error(url, e)
+            if return_resolved_url:
+                return error_text, url
+            return error_text
 
     def doPrivmsg(self, irc, msg):
         """
@@ -100,7 +145,15 @@ class URLtitle(callbacks.Plugin):
                 if not url.startswith(("http://", "https://")):
                     url = "http://" + url
 
-                title = self.fetch_title(url)
+                title, resolved_url = self.fetch_title(url, return_resolved_url=True)
+                show_expanded = self.registryValue(
+                    "showExpandedShortUrl", channel, irc.network
+                )
+                if show_expanded and self._is_supported_shortener_url(url):
+                    if resolved_url and resolved_url != url:
+                        irc.reply(f"{title} | Expanded URL: {resolved_url}", to=channel)
+                        continue
+
                 irc.reply(title, to=channel)
 
 

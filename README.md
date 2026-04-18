@@ -23,6 +23,7 @@
 # Description
 
 A simple plugin that detects URLs in a channel and returns the page title.
+Shortened URLs from Minily, Bitly, and TinyURL are resolved automatically.
 
 ## Install
 
@@ -54,6 +55,11 @@ Next, load the plugin:
 
   User-Agent header sent when fetching URLs. Default is a plugin-specific
   Limnoria URLtitle identifier.
+
+* **config channel #channel plugins.URLtitle.showExpandedShortUrl True or False (On or Off)**
+
+  If enabled and a supported short URL (Minily, Bitly, TinyURL) is resolved,
+  URLtitle appends the expanded destination URL in the reply.
 
 <br/><br/>
 <p align="center">Copyright © 2016 - 2026, Barry Suridge</p>
