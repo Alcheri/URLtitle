@@ -28,6 +28,15 @@ DEFAULT_USER_AGENT = "Limnoria-URLtitle/1.0 (+https://github.com/Alcheri/URLtitl
 URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)")
 CACHE_TTL_SECONDS = 600
 REQUEST_TIMEOUT_SECONDS = 10
+YOUTUBE_HOSTS = (
+    "youtube.com",
+    "www.youtube.com",
+    "youtu.be",
+    "www.youtu.be",
+    "m.youtube.com",
+)
+YOUTUBE_OEMBED_URL = "https://www.youtube.com/oembed"
+
 SUPPORTED_SHORTENER_HOSTS = (
     "bit.ly",
     "www.bit.ly",
@@ -63,6 +72,29 @@ class URLtitle(callbacks.Plugin):
     def _is_supported_shortener_url(self, url):
         return self._hostname_for_url(url) in SUPPORTED_SHORTENER_HOSTS
 
+    def _is_youtube_url(self, url):
+        return self._hostname_for_url(url) in YOUTUBE_HOSTS
+
+    def _fetch_youtube_title(self, url):
+        """Use YouTube's oEmbed API to get the real video title."""
+        try:
+            response = requests.get(
+                YOUTUBE_OEMBED_URL,
+                params={"url": url, "format": "json"},
+                headers=self._request_headers(),
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            data = response.json()
+            title = data.get("title", "").strip()
+            author = data.get("author_name", "").strip()
+            if title and author:
+                return f"{title} - {author}"
+            return title or None
+        except Exception as e:
+            self.log.debug(f"YouTube oEmbed failed for {url}: {e}")
+            return None
+
     def _format_request_error(self, url, error):
         if isinstance(error, Timeout):
             return (
@@ -86,6 +118,15 @@ class URLtitle(callbacks.Plugin):
                 if return_resolved_url:
                     return title, resolved_url
                 return title
+
+        # Use YouTube oEmbed API to bypass bot-detection pages.
+        if self._is_youtube_url(url):
+            yt_title = self._fetch_youtube_title(url)
+            if yt_title:
+                self.cache[url] = (yt_title, time.time(), url)
+                if return_resolved_url:
+                    return yt_title, url
+                return yt_title
 
         try:
             # Fetch the webpage
