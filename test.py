@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from requests import RequestException, ReadTimeout
 
-from .plugin import URLtitle
+from .plugin import URLtitle, YOUTUBE_PLAY_PREFIX
 
 
 class URLtitleTestCase(unittest.TestCase):
@@ -77,6 +77,21 @@ class URLtitleTestCase(unittest.TestCase):
         self.assertEqual(
             result,
             "Error fetching https://slow.example: request timed out after 10s",
+        )
+
+    def testFetchTitlePrefixesYoutubeTitle(self):
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(
+                self.plugin,
+                "_fetch_youtube_title",
+                return_value="Example Video - Example Channel",
+            ):
+                result = self.plugin.fetch_title("https://youtu.be/example")
+
+        self.assertEqual(
+            result, f"{YOUTUBE_PLAY_PREFIX}Example Video - Example Channel"
         )
 
     def testDoPrivmsgAddsSchemeAndReplies(self):

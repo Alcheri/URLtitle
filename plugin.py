@@ -36,6 +36,7 @@ YOUTUBE_HOSTS = (
     "m.youtube.com",
 )
 YOUTUBE_OEMBED_URL = "https://www.youtube.com/oembed"
+YOUTUBE_PLAY_PREFIX = f"{ircutils.mircColor('▶', 'red')} "
 
 SUPPORTED_SHORTENER_HOSTS = (
     "bit.ly",
@@ -123,6 +124,7 @@ class URLtitle(callbacks.Plugin):
         if self._is_youtube_url(url):
             yt_title = self._fetch_youtube_title(url)
             if yt_title:
+                yt_title = f"{YOUTUBE_PLAY_PREFIX}{yt_title}"
                 self.cache[url] = (yt_title, time.time(), url)
                 if return_resolved_url:
                     return yt_title, url
