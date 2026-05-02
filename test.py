@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from requests import HTTPError, RequestException, ReadTimeout
 
-from .plugin import URLtitle, YOUTUBE_PLAY_PREFIX
+from .plugin import BLOCKED_HTTP_ERROR_TITLE, URLtitle, YOUTUBE_PLAY_PREFIX
 
 
 class URLtitleTestCase(unittest.TestCase):
@@ -80,7 +80,7 @@ class URLtitleTestCase(unittest.TestCase):
         )
 
     @patch("URLtitle.plugin.requests.get")
-    def testFetchTitleBlockedHttpErrorIsQuiet(self, mock_get):
+    def testFetchTitleBlockedHttpErrorReturnsChannelMessage(self, mock_get):
         response = MagicMock()
         response.status_code = 403
         error = HTTPError("403 Client Error: Blocked for url: https://old.reddit.com/")
@@ -94,9 +94,9 @@ class URLtitleTestCase(unittest.TestCase):
         ):
             result = self.plugin.fetch_title("https://old.reddit.com/")
 
-        self.assertIsNone(result)
+        self.assertEqual(result, BLOCKED_HTTP_ERROR_TITLE)
 
-    def testDoPrivmsgSkipsReplyWhenFetchIsBlocked(self):
+    def testDoPrivmsgRepliesWhenFetchIsBlocked(self):
         msg = MagicMock()
         msg.args = ["#chan", "https://old.reddit.com/r/example/"]
         fake_irc = MagicMock()
@@ -108,11 +108,14 @@ class URLtitleTestCase(unittest.TestCase):
             with patch.object(
                 self.plugin,
                 "fetch_title",
-                return_value=(None, "https://old.reddit.com/r/example/"),
+                return_value=(
+                    BLOCKED_HTTP_ERROR_TITLE,
+                    "https://old.reddit.com/r/example/",
+                ),
             ):
                 self.plugin.doPrivmsg(fake_irc, msg)
 
-        fake_irc.reply.assert_not_called()
+        fake_irc.reply.assert_called_once_with(BLOCKED_HTTP_ERROR_TITLE, to="#chan")
 
     def testFetchTitlePrefixesYoutubeTitle(self):
         with patch.object(

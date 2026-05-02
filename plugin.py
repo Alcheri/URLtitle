@@ -28,6 +28,9 @@ DEFAULT_USER_AGENT = "Limnoria-URLtitle/1.0 (+https://github.com/Alcheri/URLtitl
 URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)")
 CACHE_TTL_SECONDS = 600
 REQUEST_TIMEOUT_SECONDS = 10
+BLOCKED_HTTP_ERROR_TITLE = (
+    "Title: Error retrieving title. 403 Client Error: Blocked for URL."
+)
 YOUTUBE_HOSTS = (
     "youtube.com",
     "www.youtube.com",
@@ -177,8 +180,8 @@ class URLtitle(callbacks.Plugin):
             if self._is_blocked_http_error(e):
                 self.log.debug(f"URL fetch blocked for {url}: {e}")
                 if return_resolved_url:
-                    return None, url
-                return None
+                    return BLOCKED_HTTP_ERROR_TITLE, url
+                return BLOCKED_HTTP_ERROR_TITLE
             self.log.error(f"Error fetching {url}: {e}")
             error_text = self._format_request_error(url, e)
             if return_resolved_url:
