@@ -8,7 +8,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from requests import RequestException, ReadTimeout
+from requests import HTTPError, RequestException, ReadTimeout
 
 from .plugin import URLtitle, YOUTUBE_PLAY_PREFIX
 
@@ -78,6 +78,41 @@ class URLtitleTestCase(unittest.TestCase):
             result,
             "Error fetching https://slow.example: request timed out after 10s",
         )
+
+    @patch("URLtitle.plugin.requests.get")
+    def testFetchTitleBlockedHttpErrorIsQuiet(self, mock_get):
+        response = MagicMock()
+        response.status_code = 403
+        error = HTTPError("403 Client Error: Blocked for url: https://old.reddit.com/")
+        error.response = response
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = error
+        mock_get.return_value = mock_response
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            result = self.plugin.fetch_title("https://old.reddit.com/")
+
+        self.assertIsNone(result)
+
+    def testDoPrivmsgSkipsReplyWhenFetchIsBlocked(self):
+        msg = MagicMock()
+        msg.args = ["#chan", "https://old.reddit.com/r/example/"]
+        fake_irc = MagicMock()
+        fake_irc.network = "testnet"
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(
+                self.plugin,
+                "fetch_title",
+                return_value=(None, "https://old.reddit.com/r/example/"),
+            ):
+                self.plugin.doPrivmsg(fake_irc, msg)
+
+        fake_irc.reply.assert_not_called()
 
     def testFetchTitlePrefixesYoutubeTitle(self):
         with patch.object(

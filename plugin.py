@@ -10,7 +10,7 @@ import time
 from urllib.parse import urlparse
 
 import requests
-from requests import RequestException, Timeout
+from requests import HTTPError, RequestException, Timeout
 
 try:
     from bs4 import BeautifulSoup
@@ -106,6 +106,15 @@ class URLtitle(callbacks.Plugin):
         error_message = str(error).strip() or error.__class__.__name__
         return f"Error fetching {url}: {error_message}"
 
+    def _is_blocked_http_error(self, error):
+        if not isinstance(error, HTTPError):
+            return False
+        response = getattr(error, "response", None)
+        status_code = getattr(response, "status_code", None)
+        if status_code == 403:
+            return True
+        return str(error).strip().startswith("403 Client Error: Blocked")
+
     def fetch_title(self, url, return_resolved_url=False):
         # Check the cache first to avoid duplicate network calls.
         if url in self.cache:
@@ -165,6 +174,11 @@ class URLtitle(callbacks.Plugin):
                 return formatted_title, resolved_url
             return formatted_title
         except RequestException as e:
+            if self._is_blocked_http_error(e):
+                self.log.debug(f"URL fetch blocked for {url}: {e}")
+                if return_resolved_url:
+                    return None, url
+                return None
             self.log.error(f"Error fetching {url}: {e}")
             error_text = self._format_request_error(url, e)
             if return_resolved_url:
@@ -197,7 +211,8 @@ class URLtitle(callbacks.Plugin):
                         irc.reply(f"{title} | Expanded URL: {resolved_url}", to=channel)
                         continue
 
-                irc.reply(title, to=channel)
+                if title:
+                    irc.reply(title, to=channel)
 
 
 Class = URLtitle
