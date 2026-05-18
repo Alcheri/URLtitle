@@ -29,7 +29,9 @@ class URLtitleTestCase(unittest.TestCase):
     @patch("URLtitle.plugin.time.time", side_effect=[1000.0, 1001.0, 1002.0])
     def testFetchTitleUsesCache(self, mock_time, mock_get):
         mock_response = MagicMock()
-        mock_response.text = "<html><head><title>Example Domain</title></head></html>"
+        mock_response.text = (
+            "<html><head><title>Example Domain</title></head></html>"
+        )
         mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
@@ -60,7 +62,9 @@ class URLtitleTestCase(unittest.TestCase):
             result, "Title for https://example.com/no-title: No title found"
         )
 
-    @patch("URLtitle.plugin.requests.get", side_effect=RequestException("boom"))
+    @patch(
+        "URLtitle.plugin.requests.get", side_effect=RequestException("boom")
+    )
     def testFetchTitleRequestError(self, mock_get):
         with patch.object(
             self.plugin, "registryValue", side_effect=self._registry_value
@@ -83,7 +87,9 @@ class URLtitleTestCase(unittest.TestCase):
     def testFetchTitleBlockedHttpErrorReturnsChannelMessage(self, mock_get):
         response = MagicMock()
         response.status_code = 403
-        error = HTTPError("403 Client Error: Blocked for url: https://old.reddit.com/")
+        error = HTTPError(
+            "403 Client Error: Blocked for url: https://old.reddit.com/"
+        )
         error.response = response
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = error
@@ -115,7 +121,9 @@ class URLtitleTestCase(unittest.TestCase):
             ):
                 self.plugin.doPrivmsg(fake_irc, msg)
 
-        fake_irc.reply.assert_called_once_with(BLOCKED_HTTP_ERROR_TITLE, to="#chan")
+        fake_irc.reply.assert_called_once_with(
+            BLOCKED_HTTP_ERROR_TITLE, to="#chan"
+        )
 
     def testFetchTitlePrefixesYoutubeTitle(self):
         with patch.object(
@@ -159,7 +167,9 @@ class URLtitleTestCase(unittest.TestCase):
         self, mock_time, mock_get
     ):
         mock_response = MagicMock()
-        mock_response.text = "<html><head><title>Destination Page</title></head></html>"
+        mock_response.text = (
+            "<html><head><title>Destination Page</title></head></html>"
+        )
         mock_response.raise_for_status.return_value = None
         mock_response.url = "https://example.com/article/123"
         mock_get.return_value = mock_response
@@ -167,8 +177,12 @@ class URLtitleTestCase(unittest.TestCase):
         with patch.object(
             self.plugin, "registryValue", side_effect=self._registry_value
         ):
-            from_short = self.plugin.fetch_title("https://tinyurl.com/abcd1234")
-            from_resolved = self.plugin.fetch_title("https://example.com/article/123")
+            from_short = self.plugin.fetch_title(
+                "https://tinyurl.com/abcd1234"
+            )
+            from_resolved = self.plugin.fetch_title(
+                "https://example.com/article/123"
+            )
 
         self.assertEqual(from_short, "Destination Page")
         self.assertEqual(from_resolved, "Destination Page")
@@ -188,11 +202,16 @@ class URLtitleTestCase(unittest.TestCase):
             }
             return values[key]
 
-        with patch.object(self.plugin, "registryValue", side_effect=registry_value):
+        with patch.object(
+            self.plugin, "registryValue", side_effect=registry_value
+        ):
             with patch.object(
                 self.plugin,
                 "fetch_title",
-                return_value=("Destination Page", "https://example.com/article/123"),
+                return_value=(
+                    "Destination Page",
+                    "https://example.com/article/123",
+                ),
             ) as mock_fetch:
                 self.plugin.doPrivmsg(fake_irc, msg)
 

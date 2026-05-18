@@ -22,7 +22,9 @@ import supybot.world as world
 # in here if you're keeping the plugin in CVS or some similar system.
 __version__ = "1.0.0"
 
-__author__ = supybot.Author("Barry Suridge", "Alcheri", "barry.suridge@outlook.com")
+__author__ = supybot.Author(
+    "Barry Suridge", "Alcheri", "barry.suridge@outlook.com"
+)
 
 # This is a dictionary mapping supybot.Author instances to lists of
 # contributions.

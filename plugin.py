@@ -24,7 +24,9 @@ from supybot.i18n import PluginInternationalization
 
 _ = PluginInternationalization("URLtitle")
 
-DEFAULT_USER_AGENT = "Limnoria-URLtitle/1.0 (+https://github.com/Alcheri/URLtitle)"
+DEFAULT_USER_AGENT = (
+    "Limnoria-URLtitle/1.0 (+https://github.com/Alcheri/URLtitle)"
+)
 URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)")
 CACHE_TTL_SECONDS = 600
 REQUEST_TIMEOUT_SECONDS = 10
@@ -145,7 +147,9 @@ class URLtitle(callbacks.Plugin):
         try:
             # Fetch the webpage
             response = requests.get(
-                url, headers=self._request_headers(), timeout=REQUEST_TIMEOUT_SECONDS
+                url,
+                headers=self._request_headers(),
+                timeout=REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
             resolved_url = url
@@ -205,13 +209,18 @@ class URLtitle(callbacks.Plugin):
                 if not url.startswith(("http://", "https://")):
                     url = "http://" + url
 
-                title, resolved_url = self.fetch_title(url, return_resolved_url=True)
+                title, resolved_url = self.fetch_title(
+                    url, return_resolved_url=True
+                )
                 show_expanded = self.registryValue(
                     "showExpandedShortUrl", channel, irc.network
                 )
                 if show_expanded and self._is_supported_shortener_url(url):
                     if resolved_url and resolved_url != url:
-                        irc.reply(f"{title} | Expanded URL: {resolved_url}", to=channel)
+                        irc.reply(
+                            f"{title} | Expanded URL: {resolved_url}",
+                            to=channel,
+                        )
                         continue
 
                 if title:
