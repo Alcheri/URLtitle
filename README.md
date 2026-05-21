@@ -52,6 +52,28 @@ Next, load the plugin:
   If enabled and a supported short URL (Minily, Bitly, TinyURL) is resolved,
   URLtitle appends the expanded destination URL in the reply.
 
+* **config channel #channel plugins.URLtitle.maxUrlsPerMessage**
+
+  Maximum number of URLs URLtitle will fetch from a single message. Default is
+  _2_.
+
+* **config channel #channel plugins.URLtitle.cooldownSeconds**
+
+  Per-user URLtitle fetch cooldown for this channel, in seconds. Default is
+  _5_.
+
+* **supybot.plugins.URLtitle.maxResponseBytes**
+
+  Maximum HTTP response size to read when extracting titles. Default is
+  _262144_.
+
+## Security Behaviour
+
+URLtitle fetches only `http` and `https` URLs, rejects loopback/private/link-local
+IP targets, checks redirected destinations before fetching them, limits response
+size before parsing, and preserves intentional IRC formatting such as the red
+YouTube play marker while stripping unsafe control characters.
+
 <br/><br/>
 <p align="center">Copyright © 2016 - 2026, Barry Suridge</p>
 

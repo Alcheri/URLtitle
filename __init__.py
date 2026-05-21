@@ -20,7 +20,7 @@ import supybot.world as world
 
 # Use this for the version of this plugin.  You may wish to put a CVS keyword
 # in here if you're keeping the plugin in CVS or some similar system.
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __author__ = supybot.Author(
     "Barry Suridge", "Alcheri", "barry.suridge@outlook.com"
@@ -44,7 +44,7 @@ reload(plugin)
 # reloaded when this plugin is reloaded.  Don't forget to import them as well!
 
 if world.testing:
-    from . import test
+    from . import test as test
 
 Class = plugin.Class
 configure = config.configure

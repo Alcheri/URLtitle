@@ -13,9 +13,9 @@ try:
 
     _ = PluginInternationalization("URLtitle")
 except ImportError:
-    # Placeholder that allows to run the plugin on a bot
-    # without the i18n module
-    _ = lambda x: x
+
+    def _(text):
+        return text
 
 
 def configure(advanced):
@@ -23,8 +23,6 @@ def configure(advanced):
     # a bool that specifies whether the user identified themself as an advanced
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
-    from supybot.questions import expect, anything, something, yn
-
     conf.registerPlugin("URLtitle", True)
 
 
@@ -55,6 +53,35 @@ conf.registerChannelValue(
     registry.Boolean(
         False,
         _("""Show expanded URL when a supported short link is resolved?"""),
+    ),
+)
+
+conf.registerChannelValue(
+    URLtitle,
+    "maxUrlsPerMessage",
+    registry.PositiveInteger(
+        2,
+        _("""Maximum number of URLs URLtitle will fetch from one message."""),
+    ),
+)
+
+conf.registerChannelValue(
+    URLtitle,
+    "cooldownSeconds",
+    registry.NonNegativeInteger(
+        5,
+        _(
+            """Per-user URLtitle fetch cooldown for this channel, in seconds."""
+        ),
+    ),
+)
+
+conf.registerGlobalValue(
+    URLtitle,
+    "maxResponseBytes",
+    registry.PositiveInteger(
+        262144,
+        _("""Maximum HTTP response size to read when extracting titles."""),
     ),
 )
 

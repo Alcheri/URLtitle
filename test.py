@@ -22,24 +22,37 @@ class URLtitleTestCase(unittest.TestCase):
             "userAgent": "URLtitle-Test/1.0",
             "enabled": True,
             "showExpandedShortUrl": False,
+            "maxUrlsPerMessage": 2,
+            "cooldownSeconds": 0,
+            "maxResponseBytes": 262144,
         }
         return defaults[key]
+
+    @staticmethod
+    def _html_response(html, url="https://example.com"):
+        response = MagicMock()
+        response.headers = {"Content-Type": "text/html"}
+        response.encoding = "utf-8"
+        response.is_redirect = False
+        response.url = url
+        response.iter_content.return_value = [html.encode("utf-8")]
+        response.raise_for_status.return_value = None
+        return response
 
     @patch("URLtitle.plugin.requests.get")
     @patch("URLtitle.plugin.time.time", side_effect=[1000.0, 1001.0, 1002.0])
     def testFetchTitleUsesCache(self, mock_time, mock_get):
-        mock_response = MagicMock()
-        mock_response.text = (
+        mock_response = self._html_response(
             "<html><head><title>Example Domain</title></head></html>"
         )
-        mock_response.raise_for_status.return_value = None
         mock_get.return_value = mock_response
 
         with patch.object(
             self.plugin, "registryValue", side_effect=self._registry_value
         ):
-            first = self.plugin.fetch_title("https://example.com")
-            second = self.plugin.fetch_title("https://example.com")
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                first = self.plugin.fetch_title("https://example.com")
+                second = self.plugin.fetch_title("https://example.com")
 
         self.assertEqual(first, "Example Domain")
         self.assertEqual(second, "Example Domain")
@@ -49,15 +62,19 @@ class URLtitleTestCase(unittest.TestCase):
 
     @patch("URLtitle.plugin.requests.get")
     def testFetchTitleNoTitleTag(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.text = "<html><body>No title</body></html>"
-        mock_response.raise_for_status.return_value = None
+        mock_response = self._html_response(
+            "<html><body>No title</body></html>",
+            url="https://example.com/no-title",
+        )
         mock_get.return_value = mock_response
 
         with patch.object(
             self.plugin, "registryValue", side_effect=self._registry_value
         ):
-            result = self.plugin.fetch_title("https://example.com/no-title")
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title(
+                    "https://example.com/no-title"
+                )
         self.assertEqual(
             result, "Title for https://example.com/no-title: No title found"
         )
@@ -69,15 +86,20 @@ class URLtitleTestCase(unittest.TestCase):
         with patch.object(
             self.plugin, "registryValue", side_effect=self._registry_value
         ):
-            result = self.plugin.fetch_title("https://bad.example")
-        self.assertEqual(result, "Error fetching https://bad.example: boom")
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title("https://bad.example")
+        self.assertEqual(
+            result,
+            "Error fetching https://bad.example: RequestException",
+        )
 
     @patch("URLtitle.plugin.requests.get", side_effect=ReadTimeout("too slow"))
     def testFetchTitleTimeoutError(self, mock_get):
         with patch.object(
             self.plugin, "registryValue", side_effect=self._registry_value
         ):
-            result = self.plugin.fetch_title("https://slow.example")
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title("https://slow.example")
         self.assertEqual(
             result,
             "Error fetching https://slow.example: request timed out after 10s",
@@ -93,12 +115,14 @@ class URLtitleTestCase(unittest.TestCase):
         error.response = response
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = error
+        mock_response.is_redirect = False
         mock_get.return_value = mock_response
 
         with patch.object(
             self.plugin, "registryValue", side_effect=self._registry_value
         ):
-            result = self.plugin.fetch_title("https://old.reddit.com/")
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title("https://old.reddit.com/")
 
         self.assertEqual(result, BLOCKED_HTTP_ERROR_TITLE)
 
@@ -134,7 +158,12 @@ class URLtitleTestCase(unittest.TestCase):
                 "_fetch_youtube_title",
                 return_value="Example Video - Example Channel",
             ):
-                result = self.plugin.fetch_title("https://youtu.be/example")
+                with patch.object(
+                    self.plugin, "_url_is_safe", return_value=True
+                ):
+                    result = self.plugin.fetch_title(
+                        "https://youtu.be/example"
+                    )
 
         self.assertEqual(
             result, f"{YOUTUBE_PLAY_PREFIX}Example Video - Example Channel"
@@ -166,23 +195,22 @@ class URLtitleTestCase(unittest.TestCase):
     def testFetchTitleResolvesKnownShortenerAndCachesResolvedUrl(
         self, mock_time, mock_get
     ):
-        mock_response = MagicMock()
-        mock_response.text = (
-            "<html><head><title>Destination Page</title></head></html>"
+        mock_response = self._html_response(
+            "<html><head><title>Destination Page</title></head></html>",
+            url="https://example.com/article/123",
         )
-        mock_response.raise_for_status.return_value = None
-        mock_response.url = "https://example.com/article/123"
         mock_get.return_value = mock_response
 
         with patch.object(
             self.plugin, "registryValue", side_effect=self._registry_value
         ):
-            from_short = self.plugin.fetch_title(
-                "https://tinyurl.com/abcd1234"
-            )
-            from_resolved = self.plugin.fetch_title(
-                "https://example.com/article/123"
-            )
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                from_short = self.plugin.fetch_title(
+                    "https://tinyurl.com/abcd1234"
+                )
+                from_resolved = self.plugin.fetch_title(
+                    "https://example.com/article/123"
+                )
 
         self.assertEqual(from_short, "Destination Page")
         self.assertEqual(from_resolved, "Destination Page")
@@ -199,6 +227,9 @@ class URLtitleTestCase(unittest.TestCase):
                 "enabled": True,
                 "showExpandedShortUrl": True,
                 "userAgent": "URLtitle-Test/1.0",
+                "maxUrlsPerMessage": 2,
+                "cooldownSeconds": 0,
+                "maxResponseBytes": 262144,
             }
             return values[key]
 
@@ -222,6 +253,81 @@ class URLtitleTestCase(unittest.TestCase):
             "Destination Page | Expanded URL: https://example.com/article/123",
             to="#chan",
         )
+
+    def testUrlIsSafeRejectsPrivateIpLiteral(self):
+        self.assertFalse(self.plugin._url_is_safe("http://127.0.0.1/admin"))
+        self.assertFalse(self.plugin._url_is_safe("http://169.254.169.254/"))
+
+    @patch("URLtitle.plugin.requests.get")
+    def testFetchTitleRejectsRedirectToPrivateIp(self, mock_get):
+        redirect = MagicMock()
+        redirect.is_redirect = True
+        redirect.headers = {"Location": "http://127.0.0.1/admin"}
+        redirect.url = "https://example.com"
+        mock_get.return_value = redirect
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(
+                self.plugin,
+                "_url_is_safe",
+                side_effect=lambda url: "127.0.0.1" not in url,
+            ):
+                result = self.plugin.fetch_title("https://example.com")
+
+        self.assertIsNone(result)
+
+    @patch("URLtitle.plugin.requests.get")
+    def testFetchTitleRejectsLargeResponse(self, mock_get):
+        response = self._html_response("<html></html>")
+        response.headers = {
+            "Content-Type": "text/html",
+            "Content-Length": "262145",
+        }
+        mock_get.return_value = response
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title("https://example.com")
+
+        self.assertIsNone(result)
+
+    def testDoPrivmsgLimitsUrlsPerMessage(self):
+        msg = MagicMock()
+        msg.args = [
+            "#chan",
+            "https://one.example https://two.example https://three.example",
+        ]
+        fake_irc = MagicMock()
+        fake_irc.network = "testnet"
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(
+                self.plugin,
+                "fetch_title",
+                return_value=("Example Domain", "https://one.example"),
+            ) as mock_fetch:
+                self.plugin.doPrivmsg(fake_irc, msg)
+
+        self.assertEqual(mock_fetch.call_count, 2)
+
+    def testReplyPreservesYoutubeColourPrefixAndStripsUnsafeControls(self):
+        fake_irc = MagicMock()
+
+        self.plugin._reply(
+            fake_irc,
+            "#chan",
+            f"{YOUTUBE_PLAY_PREFIX}Video\x00 Title",
+        )
+
+        reply = fake_irc.reply.call_args.args[0]
+        self.assertIn("\x03", reply)
+        self.assertNotIn("\x00", reply)
 
 
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:
