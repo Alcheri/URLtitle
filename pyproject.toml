@@ -7,7 +7,7 @@ name = "limnoria-urltitle"
 version = "1.1.0"
 description = "Display page titles for URLs posted in chat."
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.10"
 license = { file = "LICENCE.md" }
 authors = [{ name = "Barry Suridge" }]
 dependencies = ["beautifulsoup4", "requests"]
