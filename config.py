@@ -81,7 +81,7 @@ conf.registerGlobalValue(
     URLtitle,
     "maxResponseBytes",
     registry.PositiveInteger(
-        262144,
+        524288,
         _("""Maximum HTTP response size to read when extracting titles."""),
     ),
 )

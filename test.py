@@ -12,6 +12,7 @@ from requests import HTTPError, RequestException, ReadTimeout
 
 from .plugin import (
     BLOCKED_HTTP_ERROR_TITLE,
+    DEFAULT_MAX_RESPONSE_BYTES,
     DEFAULT_USER_AGENT,
     URLtitle,
     YOUTUBE_PLAY_PREFIX,
@@ -29,7 +30,7 @@ class URLtitleTestCase(unittest.TestCase):
             "showExpandedShortUrl": False,
             "maxUrlsPerMessage": 2,
             "cooldownSeconds": 0,
-            "maxResponseBytes": 262144,
+            "maxResponseBytes": DEFAULT_MAX_RESPONSE_BYTES,
         }
         return defaults[key]
 
@@ -263,7 +264,7 @@ class URLtitleTestCase(unittest.TestCase):
                 "userAgent": "URLtitle-Test/1.0",
                 "maxUrlsPerMessage": 2,
                 "cooldownSeconds": 0,
-                "maxResponseBytes": 262144,
+                "maxResponseBytes": DEFAULT_MAX_RESPONSE_BYTES,
             }
             return values[key]
 
@@ -314,11 +315,13 @@ class URLtitleTestCase(unittest.TestCase):
 
     @patch("URLtitle.plugin.requests.get")
     def testFetchTitleRejectsLargeResponse(self, mock_get):
-        response = self._html_response("<html></html>")
+        response = self._html_response("")
         response.headers = {
             "Content-Type": "text/html",
-            "Content-Length": "262145",
         }
+        response.iter_content.return_value = [
+            b"x" * (DEFAULT_MAX_RESPONSE_BYTES + 1)
+        ]
         mock_get.return_value = response
 
         with patch.object(
@@ -338,7 +341,10 @@ class URLtitleTestCase(unittest.TestCase):
             raise AssertionError("fetch_title read past the title chunk")
 
         response = self._html_response("", url="https://apnews.com/")
-        response.headers = {"Content-Type": "text/html;charset=UTF-8"}
+        response.headers = {
+            "Content-Type": "text/html;charset=UTF-8",
+            "Content-Length": "785483",
+        }
         response.iter_content.side_effect = lambda chunk_size: chunks()
         mock_get.return_value = response
 
@@ -349,6 +355,30 @@ class URLtitleTestCase(unittest.TestCase):
                 result = self.plugin.fetch_title("https://apnews.com/")
 
         self.assertEqual(result, "AP News")
+
+    @patch("URLtitle.plugin.requests.get")
+    def testFetchTitleUsesTitleAfterOldResponseLimit(self, mock_get):
+        response = self._html_response("", url="https://edition.cnn.com/")
+        response.headers = {
+            "Content-Type": "text/html;charset=utf-8",
+            "Content-Length": "785483",
+        }
+        response.iter_content.return_value = [
+            b" " * 300000,
+            (
+                b"<html><head><title>Breaking News, Latest News and "
+                b"Videos | CNN</title></head>"
+            ),
+        ]
+        mock_get.return_value = response
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title("https://edition.cnn.com/")
+
+        self.assertEqual(result, "Breaking News, Latest News and Videos | CNN")
 
     def testDoPrivmsgLimitsUrlsPerMessage(self):
         msg = MagicMock()

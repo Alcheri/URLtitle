@@ -34,7 +34,7 @@ DEFAULT_USER_AGENT = (
 URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)")
 CACHE_TTL_SECONDS = 600
 REQUEST_TIMEOUT_SECONDS = 10
-DEFAULT_MAX_RESPONSE_BYTES = 262144
+DEFAULT_MAX_RESPONSE_BYTES = 524288
 MAX_TITLE_LENGTH = 400
 MAX_REPLY_LENGTH = 500
 MAX_REDIRECTS = 3
@@ -196,14 +196,6 @@ class URLtitle(callbacks.Plugin):
         return bytes(content).decode(encoding, errors="replace")
 
     def _extract_title_from_response(self, response, max_bytes, resolved_url):
-        content_length = response.headers.get("Content-Length")
-        if content_length:
-            try:
-                if int(content_length) > max_bytes:
-                    return None
-            except ValueError:
-                pass
-
         content = bytearray()
         encoding = response.encoding or "utf-8"
         for chunk in response.iter_content(chunk_size=8192):

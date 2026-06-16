@@ -65,7 +65,7 @@ Next, load the plugin:
 * **supybot.plugins.URLtitle.maxResponseBytes**
 
   Maximum HTTP response size to read when extracting titles. Default is
-  _262144_.
+  _524288_.
 
 ## Security Behaviour
 
