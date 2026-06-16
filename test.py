@@ -10,7 +10,12 @@ from unittest.mock import MagicMock, patch
 
 from requests import HTTPError, RequestException, ReadTimeout
 
-from .plugin import BLOCKED_HTTP_ERROR_TITLE, URLtitle, YOUTUBE_PLAY_PREFIX
+from .plugin import (
+    BLOCKED_HTTP_ERROR_TITLE,
+    DEFAULT_USER_AGENT,
+    URLtitle,
+    YOUTUBE_PLAY_PREFIX,
+)
 
 
 class URLtitleTestCase(unittest.TestCase):
@@ -38,6 +43,11 @@ class URLtitleTestCase(unittest.TestCase):
         response.iter_content.return_value = [html.encode("utf-8")]
         response.raise_for_status.return_value = None
         return response
+
+    def testDefaultUserAgentIsBrowserLike(self):
+        self.assertTrue(DEFAULT_USER_AGENT.startswith("Mozilla/5.0"))
+        self.assertIn("AppleWebKit", DEFAULT_USER_AGENT)
+        self.assertIn("Safari", DEFAULT_USER_AGENT)
 
     @patch("URLtitle.plugin.requests.get")
     @patch("URLtitle.plugin.time.time", side_effect=[1000.0, 1001.0, 1002.0])
@@ -125,6 +135,30 @@ class URLtitleTestCase(unittest.TestCase):
                 result = self.plugin.fetch_title("https://old.reddit.com/")
 
         self.assertEqual(result, BLOCKED_HTTP_ERROR_TITLE)
+
+    @patch("URLtitle.plugin.requests.get")
+    def testFetchTitleForbiddenHttpErrorUsesGenericError(self, mock_get):
+        response = MagicMock()
+        response.status_code = 403
+        error = HTTPError(
+            "403 Client Error: Forbidden for url: https://www.dailymail.com/"
+        )
+        error.response = response
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = error
+        mock_response.is_redirect = False
+        mock_get.return_value = mock_response
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title("https://www.dailymail.com/")
+
+        self.assertEqual(
+            result,
+            "Error fetching https://www.dailymail.com: HTTPError",
+        )
 
     def testDoPrivmsgRepliesWhenFetchIsBlocked(self):
         msg = MagicMock()
@@ -294,6 +328,27 @@ class URLtitleTestCase(unittest.TestCase):
                 result = self.plugin.fetch_title("https://example.com")
 
         self.assertIsNone(result)
+
+    @patch("URLtitle.plugin.requests.get")
+    def testFetchTitleUsesEarlyTitleFromLargeStreamingPage(self, mock_get):
+        def chunks():
+            yield "<html><head><title>AP News</title></head><body>".encode(
+                "utf-8"
+            )
+            raise AssertionError("fetch_title read past the title chunk")
+
+        response = self._html_response("", url="https://apnews.com/")
+        response.headers = {"Content-Type": "text/html;charset=UTF-8"}
+        response.iter_content.side_effect = lambda chunk_size: chunks()
+        mock_get.return_value = response
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title("https://apnews.com/")
+
+        self.assertEqual(result, "AP News")
 
     def testDoPrivmsgLimitsUrlsPerMessage(self):
         msg = MagicMock()

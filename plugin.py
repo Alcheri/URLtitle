@@ -28,7 +28,8 @@ from supybot.i18n import PluginInternationalization
 _ = PluginInternationalization("URLtitle")
 
 DEFAULT_USER_AGENT = (
-    "Limnoria-URLtitle/1.0 (+https://github.com/Alcheri/URLtitle)"
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 )
 URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)")
 CACHE_TTL_SECONDS = 600
@@ -194,6 +195,34 @@ class URLtitle(callbacks.Plugin):
         encoding = response.encoding or "utf-8"
         return bytes(content).decode(encoding, errors="replace")
 
+    def _extract_title_from_response(self, response, max_bytes, resolved_url):
+        content_length = response.headers.get("Content-Length")
+        if content_length:
+            try:
+                if int(content_length) > max_bytes:
+                    return None
+            except ValueError:
+                pass
+
+        content = bytearray()
+        encoding = response.encoding or "utf-8"
+        for chunk in response.iter_content(chunk_size=8192):
+            if not chunk:
+                continue
+            content.extend(chunk)
+            if len(content) > max_bytes:
+                return None
+
+            html = bytes(content).decode(encoding, errors="replace")
+            soup = BeautifulSoup(html, "html.parser")
+            title_tag = soup.find("title")
+            if title_tag:
+                return self._clean_text(
+                    title_tag.get_text(strip=True), MAX_TITLE_LENGTH
+                )
+
+        return f"Title for {resolved_url}: No title found"
+
     def _cooldown_remaining(self, irc, msg, channel):
         cooldown = self.registryValue("cooldownSeconds", channel, irc.network)
         if not cooldown:
@@ -293,10 +322,6 @@ class URLtitle(callbacks.Plugin):
     def _is_blocked_http_error(self, error):
         if not isinstance(error, HTTPError):
             return False
-        response = getattr(error, "response", None)
-        status_code = getattr(response, "status_code", None)
-        if status_code == 403:
-            return True
         return str(error).strip().startswith("403 Client Error: Blocked")
 
     def fetch_title(self, url, return_resolved_url=False):
@@ -403,10 +428,12 @@ class URLtitle(callbacks.Plugin):
                     return None, resolved_url
                 return None
 
-            html = self._read_limited_response(
-                response, self._max_response_bytes()
+            formatted_title = self._extract_title_from_response(
+                response,
+                self._max_response_bytes(),
+                resolved_url,
             )
-            if html is None:
+            if formatted_title is None:
                 self.log.debug(
                     "URL fetch response exceeded size limit for %s",
                     self._safe_url_for_log(resolved_url),
@@ -414,17 +441,6 @@ class URLtitle(callbacks.Plugin):
                 if return_resolved_url:
                     return None, resolved_url
                 return None
-
-            # Parse the HTML and extract the title
-            soup = BeautifulSoup(html, "html.parser")
-            title_tag = soup.find("title")
-
-            if title_tag:
-                formatted_title = self._clean_text(
-                    title_tag.get_text(strip=True), MAX_TITLE_LENGTH
-                )
-            else:
-                formatted_title = f"Title for {resolved_url}: No title found"
 
             # Update the cache
             cache_timestamp = time.time()
