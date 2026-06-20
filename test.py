@@ -194,14 +194,79 @@ class URLtitleTestCase(unittest.TestCase):
                 return_value="Example Video - Example Channel",
             ):
                 with patch.object(
-                    self.plugin, "_url_is_safe", return_value=True
+                    self.plugin, "_fetch_youtube_metadata", return_value={}
                 ):
-                    result = self.plugin.fetch_title(
-                        "https://youtu.be/example"
-                    )
+                    with patch.object(
+                        self.plugin, "_url_is_safe", return_value=True
+                    ):
+                        result = self.plugin.fetch_title(
+                            "https://youtu.be/example"
+                        )
 
         self.assertEqual(
             result, f"{YOUTUBE_PLAY_PREFIX}Example Video - Example Channel"
+        )
+
+    def testFetchTitleAddsYoutubeSizeAndUploadDate(self):
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(
+                self.plugin,
+                "_fetch_youtube_title",
+                return_value="Example Video - Example Channel",
+            ):
+                with patch.object(
+                    self.plugin,
+                    "_fetch_youtube_metadata",
+                    return_value={
+                        "size": "1920x1080",
+                        "upload_date": "3 Jan 2026",
+                    },
+                ):
+                    with patch.object(
+                        self.plugin, "_url_is_safe", return_value=True
+                    ):
+                        result = self.plugin.fetch_title(
+                            "https://youtu.be/example"
+                        )
+
+        self.assertEqual(
+            result,
+            (
+                f"{YOUTUBE_PLAY_PREFIX}Example Video - Example Channel | "
+                "1920x1080 | Uploaded 3 Jan 2026"
+            ),
+        )
+
+    def testFetchYoutubeMetadataParsesPageMetadata(self):
+        response = self._html_response(
+            """
+            <html>
+              <head>
+                <meta itemprop="uploadDate" content="2026-01-03">
+                <meta property="og:video:width" content="1920">
+                <meta property="og:video:height" content="1080">
+              </head>
+            </html>
+            """,
+            url="https://www.youtube.com/watch?v=example",
+        )
+
+        with patch("URLtitle.plugin.requests.get", return_value=response):
+            with patch.object(
+                self.plugin, "registryValue", side_effect=self._registry_value
+            ):
+                with patch.object(
+                    self.plugin, "_url_is_safe", return_value=True
+                ):
+                    result = self.plugin._fetch_youtube_metadata(
+                        "https://www.youtube.com/watch?v=example"
+                    )
+
+        self.assertEqual(
+            result,
+            {"size": "1920x1080", "upload_date": "3 Jan 2026"},
         )
 
     def testDoPrivmsgAddsSchemeAndReplies(self):
