@@ -8,7 +8,7 @@ All notable changes to URLtitle are documented in this file.
 
 - Normalised README badges.
 - Set the package Python requirement to Python 3.10 or newer.
-- Included YouTube video size and upload date in YouTube title output when available.
+- Included YouTube video duration and upload date in YouTube title output when available.
 
 ## v1.1.0 - 2026-05-22
 

@@ -36,6 +36,7 @@ URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+)")
 CACHE_TTL_SECONDS = 600
 REQUEST_TIMEOUT_SECONDS = 10
 DEFAULT_MAX_RESPONSE_BYTES = 524288
+YOUTUBE_METADATA_MAX_RESPONSE_BYTES = 1048576
 MAX_TITLE_LENGTH = 400
 MAX_REPLY_LENGTH = 500
 MAX_REDIRECTS = 3
@@ -43,6 +44,9 @@ UNSAFE_CONTROL_CHARS_RE = re.compile(
     r"[\x00-\x01\x04-\x0e\x10-\x15\x17-\x1c\x1e\x7f]"
 )
 WHITESPACE_RE = re.compile(r"\s+")
+YOUTUBE_ISO_DURATION_RE = re.compile(
+    r"^P(?:\d+D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$"
+)
 HTML_CONTENT_TYPES = (
     "text/html",
     "application/xhtml+xml",
@@ -196,6 +200,20 @@ class URLtitle(callbacks.Plugin):
         encoding = response.encoding or "utf-8"
         return bytes(content).decode(encoding, errors="replace")
 
+    def _read_partial_response(self, response, max_bytes):
+        content = bytearray()
+        for chunk in response.iter_content(chunk_size=8192):
+            if not chunk:
+                continue
+            remaining = max_bytes - len(content)
+            if remaining <= 0:
+                break
+            content.extend(chunk[:remaining])
+            if len(content) >= max_bytes:
+                break
+        encoding = response.encoding or "utf-8"
+        return bytes(content).decode(encoding, errors="replace")
+
     def _extract_title_from_response(self, response, max_bytes, resolved_url):
         content = bytearray()
         encoding = response.encoding or "utf-8"
@@ -336,15 +354,47 @@ class URLtitle(callbacks.Plugin):
         day = str(int(parsed.strftime("%d")))
         return f"{day} {parsed.strftime('%b %Y')}"
 
-    def _format_youtube_size(self, width, height):
+    def _format_youtube_duration(self, value):
+        if not value:
+            return None
+        text = self._clean_text(value, max_length=32)
         try:
-            width = int(width)
-            height = int(height)
+            total_seconds = int(text)
         except (TypeError, ValueError):
+            match = YOUTUBE_ISO_DURATION_RE.match(text)
+            if not match:
+                return None
+            hours, minutes, seconds = (
+                int(part or 0) for part in match.groups()
+            )
+            total_seconds = (hours * 3600) + (minutes * 60) + seconds
+        if total_seconds <= 0:
             return None
-        if width <= 0 or height <= 0:
-            return None
-        return f"{width}x{height}"
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if hours:
+            return f"{hours}:{minutes:02d}:{seconds:02d}"
+        return f"{minutes}:{seconds:02d}"
+
+    def _youtube_initial_player_response(self, body):
+        marker = "ytInitialPlayerResponse"
+        index = 0
+        decoder = json.JSONDecoder()
+        while True:
+            index = body.find(marker, index)
+            if index == -1:
+                return None
+            json_start = body.find("{", index + len(marker))
+            if json_start == -1:
+                return None
+            try:
+                data, _end = decoder.raw_decode(body[json_start:])
+            except ValueError:
+                index = json_start + 1
+                continue
+            if isinstance(data, dict):
+                return data
+            index = json_start + 1
 
     def _fetch_youtube_metadata(self, url):
         if not self._url_is_safe(url):
@@ -358,14 +408,9 @@ class URLtitle(callbacks.Plugin):
                 stream=True,
             )
             response.raise_for_status()
-            body = self._read_limited_response(
-                response, self._max_response_bytes()
+            body = self._read_partial_response(
+                response, YOUTUBE_METADATA_MAX_RESPONSE_BYTES
             )
-            if body is None:
-                self.log.debug(
-                    "YouTube metadata response exceeded size limit."
-                )
-                return {}
         except RequestException as e:
             self.log.debug(
                 "YouTube metadata fetch failed for %s: %s",
@@ -376,8 +421,7 @@ class URLtitle(callbacks.Plugin):
 
         soup = BeautifulSoup(body, "html.parser")
         upload_date = self._youtube_meta_content(soup, "uploadDate")
-        width = self._youtube_meta_content(soup, "width", "og:video:width")
-        height = self._youtube_meta_content(soup, "height", "og:video:height")
+        duration = self._youtube_meta_content(soup, "duration")
 
         for script in soup.find_all(
             "script", attrs={"type": "application/ld+json"}
@@ -389,21 +433,32 @@ class URLtitle(callbacks.Plugin):
             upload_date = upload_date or self._metadata_value_from_ld_json(
                 data, "uploadDate"
             )
-            width = width or self._metadata_value_from_ld_json(data, "width")
-            height = height or self._metadata_value_from_ld_json(
-                data, "height"
+            duration = duration or self._metadata_value_from_ld_json(
+                data, "duration"
+            )
+
+        player_response = self._youtube_initial_player_response(body)
+        if player_response:
+            upload_date = upload_date or self._metadata_value_from_ld_json(
+                player_response, "uploadDate"
+            )
+            upload_date = upload_date or self._metadata_value_from_ld_json(
+                player_response, "publishDate"
+            )
+            duration = duration or self._metadata_value_from_ld_json(
+                player_response, "lengthSeconds"
             )
 
         return {
-            "size": self._format_youtube_size(width, height),
+            "duration": self._format_youtube_duration(duration),
             "upload_date": self._format_youtube_upload_date(upload_date),
         }
 
     def _format_youtube_output(self, title, metadata):
         parts = [f"{YOUTUBE_PLAY_PREFIX}{title}"]
         details = []
-        if metadata.get("size"):
-            details.append(metadata["size"])
+        if metadata.get("duration"):
+            details.append(metadata["duration"])
         if metadata.get("upload_date"):
             details.append(f"Uploaded {metadata['upload_date']}")
         if details:
