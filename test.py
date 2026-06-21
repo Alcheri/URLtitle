@@ -50,7 +50,19 @@ class URLtitleTestCase(unittest.TestCase):
         self.assertIn("AppleWebKit", DEFAULT_USER_AGENT)
         self.assertIn("Safari", DEFAULT_USER_AGENT)
 
-    @patch("URLtitle.plugin.requests.get")
+    def testHttpGetClearsSessionCookies(self):
+        session = MagicMock()
+        response = MagicMock()
+        session.get.return_value = response
+
+        with patch.object(self.plugin, "_http_session", return_value=session):
+            result = self.plugin._http_get("https://example.com")
+
+        self.assertIs(result, response)
+        session.get.assert_called_once_with("https://example.com")
+        self.assertEqual(session.cookies.clear.call_count, 2)
+
+    @patch("URLtitle.plugin.URLtitle._http_get")
     @patch("URLtitle.plugin.time.time", side_effect=[1000.0, 1001.0, 1002.0])
     def testFetchTitleUsesCache(self, mock_time, mock_get):
         mock_response = self._html_response(
@@ -71,7 +83,7 @@ class URLtitleTestCase(unittest.TestCase):
         _, kwargs = mock_get.call_args
         self.assertEqual(kwargs["headers"]["User-Agent"], "URLtitle-Test/1.0")
 
-    @patch("URLtitle.plugin.requests.get")
+    @patch("URLtitle.plugin.URLtitle._http_get")
     def testFetchTitleNoTitleTag(self, mock_get):
         mock_response = self._html_response(
             "<html><body>No title</body></html>",
@@ -91,7 +103,8 @@ class URLtitleTestCase(unittest.TestCase):
         )
 
     @patch(
-        "URLtitle.plugin.requests.get", side_effect=RequestException("boom")
+        "URLtitle.plugin.URLtitle._http_get",
+        side_effect=RequestException("boom"),
     )
     def testFetchTitleRequestError(self, mock_get):
         with patch.object(
@@ -104,7 +117,10 @@ class URLtitleTestCase(unittest.TestCase):
             "Error fetching https://bad.example: RequestException",
         )
 
-    @patch("URLtitle.plugin.requests.get", side_effect=ReadTimeout("too slow"))
+    @patch(
+        "URLtitle.plugin.URLtitle._http_get",
+        side_effect=ReadTimeout("too slow"),
+    )
     def testFetchTitleTimeoutError(self, mock_get):
         with patch.object(
             self.plugin, "registryValue", side_effect=self._registry_value
@@ -116,7 +132,7 @@ class URLtitleTestCase(unittest.TestCase):
             "Error fetching https://slow.example: request timed out after 10s",
         )
 
-    @patch("URLtitle.plugin.requests.get")
+    @patch("URLtitle.plugin.URLtitle._http_get")
     def testFetchTitleBlockedHttpErrorReturnsChannelMessage(self, mock_get):
         response = MagicMock()
         response.status_code = 403
@@ -137,7 +153,7 @@ class URLtitleTestCase(unittest.TestCase):
 
         self.assertEqual(result, BLOCKED_HTTP_ERROR_TITLE)
 
-    @patch("URLtitle.plugin.requests.get")
+    @patch("URLtitle.plugin.URLtitle._http_get")
     def testFetchTitleForbiddenHttpErrorUsesGenericError(self, mock_get):
         response = MagicMock()
         response.status_code = 403
@@ -253,7 +269,9 @@ class URLtitleTestCase(unittest.TestCase):
             url="https://www.youtube.com/watch?v=example",
         )
 
-        with patch("URLtitle.plugin.requests.get", return_value=response):
+        with patch(
+            "URLtitle.plugin.URLtitle._http_get", return_value=response
+        ):
             with patch.object(
                 self.plugin, "registryValue", side_effect=self._registry_value
             ):
@@ -290,7 +308,9 @@ class URLtitleTestCase(unittest.TestCase):
             url="https://www.youtube.com/watch?v=example",
         )
 
-        with patch("URLtitle.plugin.requests.get", return_value=response):
+        with patch(
+            "URLtitle.plugin.URLtitle._http_get", return_value=response
+        ):
             with patch.object(
                 self.plugin, "registryValue", side_effect=self._registry_value
             ):
@@ -323,7 +343,9 @@ class URLtitleTestCase(unittest.TestCase):
             url="https://www.youtube.com/watch?v=example",
         )
 
-        with patch("URLtitle.plugin.requests.get", return_value=response):
+        with patch(
+            "URLtitle.plugin.URLtitle._http_get", return_value=response
+        ):
             with patch.object(
                 self.plugin, "registryValue", side_effect=self._registry_value
             ):
@@ -360,7 +382,7 @@ class URLtitleTestCase(unittest.TestCase):
         )
         fake_irc.reply.assert_called_once_with("Example Domain", to="#chan")
 
-    @patch("URLtitle.plugin.requests.get")
+    @patch("URLtitle.plugin.URLtitle._http_get")
     @patch("URLtitle.plugin.time.time", side_effect=[1000.0, 1001.0, 1002.0])
     def testFetchTitleResolvesKnownShortenerAndCachesResolvedUrl(
         self, mock_time, mock_get
@@ -428,7 +450,7 @@ class URLtitleTestCase(unittest.TestCase):
         self.assertFalse(self.plugin._url_is_safe("http://127.0.0.1/admin"))
         self.assertFalse(self.plugin._url_is_safe("http://169.254.169.254/"))
 
-    @patch("URLtitle.plugin.requests.get")
+    @patch("URLtitle.plugin.URLtitle._http_get")
     def testFetchTitleRejectsRedirectToPrivateIp(self, mock_get):
         redirect = MagicMock()
         redirect.is_redirect = True
@@ -448,7 +470,7 @@ class URLtitleTestCase(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    @patch("URLtitle.plugin.requests.get")
+    @patch("URLtitle.plugin.URLtitle._http_get")
     def testFetchTitleRejectsLargeResponse(self, mock_get):
         response = self._html_response("")
         response.headers = {
@@ -467,7 +489,7 @@ class URLtitleTestCase(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    @patch("URLtitle.plugin.requests.get")
+    @patch("URLtitle.plugin.URLtitle._http_get")
     def testFetchTitleUsesEarlyTitleFromLargeStreamingPage(self, mock_get):
         def chunks():
             yield "<html><head><title>AP News</title></head><body>".encode(
@@ -491,7 +513,7 @@ class URLtitleTestCase(unittest.TestCase):
 
         self.assertEqual(result, "AP News")
 
-    @patch("URLtitle.plugin.requests.get")
+    @patch("URLtitle.plugin.URLtitle._http_get")
     def testFetchTitleUsesTitleAfterOldResponseLimit(self, mock_get):
         response = self._html_response("", url="https://edition.cnn.com/")
         response.headers = {

@@ -10,6 +10,7 @@ import json
 import socket
 import threading
 import time
+from html import unescape
 from datetime import datetime
 from ipaddress import ip_address
 from urllib.parse import urljoin, urlparse
@@ -44,6 +45,9 @@ UNSAFE_CONTROL_CHARS_RE = re.compile(
     r"[\x00-\x01\x04-\x0e\x10-\x15\x17-\x1c\x1e\x7f]"
 )
 WHITESPACE_RE = re.compile(r"\s+")
+TITLE_RE = re.compile(
+    r"<title\b[^>]*>(.*?)</title\s*>", re.IGNORECASE | re.DOTALL
+)
 YOUTUBE_ISO_DURATION_RE = re.compile(
     r"^P(?:\d+D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$"
 )
@@ -85,8 +89,37 @@ class URLtitle(callbacks.Plugin):
         self.__parent = super(URLtitle, self)
         self.__parent.__init__(irc)
         self.cache = {}  # Simple cache for storing URL titles
+        self._cache_lock = threading.Lock()
         self._cooldowns = {}
         self._cooldown_lock = threading.Lock()
+        self._session_local = threading.local()
+        self._sessions = set()
+        self._sessions_lock = threading.Lock()
+
+    def die(self):
+        with self._sessions_lock:
+            sessions = list(self._sessions)
+            self._sessions.clear()
+        for session in sessions:
+            session.close()
+        self.__parent.die()
+
+    def _http_session(self):
+        session = getattr(self._session_local, "session", None)
+        if session is None:
+            session = requests.Session()
+            self._session_local.session = session
+            with self._sessions_lock:
+                self._sessions.add(session)
+        return session
+
+    def _http_get(self, *args, **kwargs):
+        session = self._http_session()
+        session.cookies.clear()
+        try:
+            return session.get(*args, **kwargs)
+        finally:
+            session.cookies.clear()
 
     def _request_headers(self):
         return {"User-Agent": self.registryValue("userAgent")}
@@ -214,6 +247,37 @@ class URLtitle(callbacks.Plugin):
         encoding = response.encoding or "utf-8"
         return bytes(content).decode(encoding, errors="replace")
 
+    def _title_from_html(self, html):
+        match = TITLE_RE.search(html)
+        if not match:
+            return None
+        return self._clean_text(unescape(match.group(1)), MAX_TITLE_LENGTH)
+
+    def _get_cached_title(self, url):
+        with self._cache_lock:
+            cached = self.cache.get(url)
+        if not cached:
+            return None
+        if len(cached) == 3:
+            title, timestamp, resolved_url = cached
+        else:
+            title, timestamp = cached
+            resolved_url = url
+        if time.time() - timestamp >= CACHE_TTL_SECONDS:
+            return None
+        return title, resolved_url
+
+    def _store_cached_title(self, url, title, resolved_url):
+        cache_timestamp = time.time()
+        with self._cache_lock:
+            self.cache[url] = (title, cache_timestamp, resolved_url)
+            if resolved_url != url:
+                self.cache[resolved_url] = (
+                    title,
+                    cache_timestamp,
+                    resolved_url,
+                )
+
     def _extract_title_from_response(self, response, max_bytes, resolved_url):
         content = bytearray()
         encoding = response.encoding or "utf-8"
@@ -225,12 +289,17 @@ class URLtitle(callbacks.Plugin):
                 return None
 
             html = bytes(content).decode(encoding, errors="replace")
-            soup = BeautifulSoup(html, "html.parser")
-            title_tag = soup.find("title")
-            if title_tag:
-                return self._clean_text(
-                    title_tag.get_text(strip=True), MAX_TITLE_LENGTH
-                )
+            title = self._title_from_html(html)
+            if title:
+                return title
+
+        html = bytes(content).decode(encoding, errors="replace")
+        soup = BeautifulSoup(html, "html.parser")
+        title_tag = soup.find("title")
+        if title_tag:
+            return self._clean_text(
+                title_tag.get_text(strip=True), MAX_TITLE_LENGTH
+            )
 
         return f"Title for {resolved_url}: No title found"
 
@@ -288,7 +357,7 @@ class URLtitle(callbacks.Plugin):
             return None
 
         try:
-            response = requests.get(
+            response = self._http_get(
                 YOUTUBE_OEMBED_URL,
                 params={"url": url, "format": "json"},
                 headers=self._request_headers(),
@@ -401,7 +470,7 @@ class URLtitle(callbacks.Plugin):
             return {}
 
         try:
-            response = requests.get(
+            response = self._http_get(
                 url,
                 headers=self._request_headers(),
                 timeout=REQUEST_TIMEOUT_SECONDS,
@@ -493,17 +562,12 @@ class URLtitle(callbacks.Plugin):
             return None
 
         # Check the cache first to avoid duplicate network calls.
-        if url in self.cache:
-            cached = self.cache[url]
-            if len(cached) == 3:
-                title, timestamp, resolved_url = cached
-            else:
-                title, timestamp = cached
-                resolved_url = url
-            if time.time() - timestamp < CACHE_TTL_SECONDS:
-                if return_resolved_url:
-                    return title, resolved_url
-                return title
+        cached = self._get_cached_title(url)
+        if cached:
+            title, resolved_url = cached
+            if return_resolved_url:
+                return title, resolved_url
+            return title
 
         # Use YouTube oEmbed API to bypass bot-detection pages.
         if self._is_youtube_url(url):
@@ -512,7 +576,7 @@ class URLtitle(callbacks.Plugin):
                 yt_title = self._format_youtube_output(
                     yt_title, self._fetch_youtube_metadata(url)
                 )
-                self.cache[url] = (yt_title, time.time(), url)
+                self._store_cached_title(url, yt_title, url)
                 if return_resolved_url:
                     return yt_title, url
                 return yt_title
@@ -529,7 +593,7 @@ class URLtitle(callbacks.Plugin):
                     if return_resolved_url:
                         return None, current_url
                     return None
-                response = requests.get(
+                response = self._http_get(
                     current_url,
                     headers=self._request_headers(),
                     timeout=REQUEST_TIMEOUT_SECONDS,
@@ -602,15 +666,7 @@ class URLtitle(callbacks.Plugin):
                     return None, resolved_url
                 return None
 
-            # Update the cache
-            cache_timestamp = time.time()
-            self.cache[url] = (formatted_title, cache_timestamp, resolved_url)
-            if resolved_url != url:
-                self.cache[resolved_url] = (
-                    formatted_title,
-                    cache_timestamp,
-                    resolved_url,
-                )
+            self._store_cached_title(url, formatted_title, resolved_url)
             if return_resolved_url:
                 return formatted_title, resolved_url
             return formatted_title
