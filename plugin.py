@@ -38,6 +38,8 @@ CACHE_TTL_SECONDS = 600
 REQUEST_TIMEOUT_SECONDS = 10
 DEFAULT_MAX_RESPONSE_BYTES = 524288
 YOUTUBE_METADATA_MAX_RESPONSE_BYTES = 1048576
+YOUTUBE_METADATA_TIMEOUT_SECONDS = 3
+YOUTUBE_METADATA_READ_SECONDS = 3
 MAX_TITLE_LENGTH = 400
 MAX_REPLY_LENGTH = 500
 MAX_REDIRECTS = 3
@@ -233,9 +235,15 @@ class URLtitle(callbacks.Plugin):
         encoding = response.encoding or "utf-8"
         return bytes(content).decode(encoding, errors="replace")
 
-    def _read_partial_response(self, response, max_bytes):
+    def _read_partial_response(self, response, max_bytes, max_seconds=None):
         content = bytearray()
+        deadline = None
+        if max_seconds is not None:
+            deadline = time.monotonic() + max_seconds
+
         for chunk in response.iter_content(chunk_size=8192):
+            if deadline is not None and time.monotonic() >= deadline:
+                break
             if not chunk:
                 continue
             remaining = max_bytes - len(content)
@@ -473,12 +481,14 @@ class URLtitle(callbacks.Plugin):
             response = self._http_get(
                 url,
                 headers=self._request_headers(),
-                timeout=REQUEST_TIMEOUT_SECONDS,
+                timeout=YOUTUBE_METADATA_TIMEOUT_SECONDS,
                 stream=True,
             )
             response.raise_for_status()
             body = self._read_partial_response(
-                response, YOUTUBE_METADATA_MAX_RESPONSE_BYTES
+                response,
+                YOUTUBE_METADATA_MAX_RESPONSE_BYTES,
+                max_seconds=YOUTUBE_METADATA_READ_SECONDS,
             )
         except RequestException as e:
             self.log.debug(

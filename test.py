@@ -16,6 +16,7 @@ from .plugin import (
     DEFAULT_USER_AGENT,
     URLtitle,
     YOUTUBE_PLAY_PREFIX,
+    YOUTUBE_METADATA_TIMEOUT_SECONDS,
 )
 
 
@@ -360,6 +361,35 @@ class URLtitleTestCase(unittest.TestCase):
             result,
             {"duration": "24:50", "upload_date": "14 Jun 2026"},
         )
+
+    @patch("URLtitle.plugin.time.monotonic")
+    def testReadPartialResponseStopsAtTimeBudget(self, mock_monotonic):
+        mock_monotonic.side_effect = [100.0, 101.0, 104.0]
+        response = self._html_response("", url="https://www.youtube.com/")
+        response.iter_content.return_value = [b"first", b"second"]
+
+        result = self.plugin._read_partial_response(
+            response, max_bytes=100, max_seconds=3
+        )
+
+        self.assertEqual(result, "first")
+
+    @patch(
+        "URLtitle.plugin.URLtitle._http_get",
+        side_effect=ReadTimeout("too slow"),
+    )
+    def testFetchYoutubeMetadataUsesShortTimeout(self, mock_get):
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin._fetch_youtube_metadata(
+                    "https://youtu.be/example"
+                )
+
+        self.assertEqual(result, {})
+        _, kwargs = mock_get.call_args
+        self.assertEqual(kwargs["timeout"], YOUTUBE_METADATA_TIMEOUT_SECONDS)
 
     def testDoPrivmsgAddsSchemeAndReplies(self):
         msg = MagicMock()
