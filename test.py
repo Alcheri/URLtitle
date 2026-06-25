@@ -19,6 +19,8 @@ from .plugin import (
     YOUTUBE_METADATA_TIMEOUT_SECONDS,
 )
 
+OLD_GENERIC_MAX_RESPONSE_BYTES = 524288
+
 
 class URLtitleTestCase(unittest.TestCase):
     def setUp(self):
@@ -329,7 +331,7 @@ class URLtitleTestCase(unittest.TestCase):
 
     def testFetchYoutubeMetadataReadsPastGenericTitleLimit(self):
         response = self._html_response(
-            (" " * (DEFAULT_MAX_RESPONSE_BYTES + 1000) + """
+            (" " * (OLD_GENERIC_MAX_RESPONSE_BYTES + 1000) + """
                 <html>
                   <head>
                     <meta itemprop="uploadDate" content="2026-06-14T06:54:06-07:00">
@@ -566,6 +568,33 @@ class URLtitleTestCase(unittest.TestCase):
                 result = self.plugin.fetch_title("https://edition.cnn.com/")
 
         self.assertEqual(result, "Breaking News, Latest News and Videos | CNN")
+
+    @patch("URLtitle.plugin.URLtitle._http_get")
+    def testFetchTitleUsesTitleFromLargeNewsFrontPage(self, mock_get):
+        response = self._html_response("", url="https://www.cnbc.com/")
+        response.headers = {
+            "Content-Type": "text/html;charset=utf-8",
+            "Content-Length": "1054739",
+        }
+        response.iter_content.return_value = [
+            b" " * 753000,
+            (
+                b"<html><head><title>Stock Markets, Business News, "
+                b"Financials, Earnings - CNBC</title></head>"
+            ),
+        ]
+        mock_get.return_value = response
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title("https://www.cnbc.com/")
+
+        self.assertEqual(
+            result,
+            "Stock Markets, Business News, Financials, Earnings - CNBC",
+        )
 
     def testDoPrivmsgLimitsUrlsPerMessage(self):
         msg = MagicMock()
