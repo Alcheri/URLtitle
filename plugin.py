@@ -57,6 +57,11 @@ HTML_CONTENT_TYPES = (
     "text/html",
     "application/xhtml+xml",
 )
+MEDIA_CONTENT_TYPE_PREFIXES = (
+    "image/",
+    "video/",
+    "audio/",
+)
 BLOCKED_HTTP_ERROR_TITLE = (
     "Title: Error retrieving title. 403 Client Error: Blocked for URL."
 )
@@ -208,13 +213,46 @@ class URLtitle(callbacks.Plugin):
             return False
         return self._host_is_safe(parsed.hostname)
 
-    def _content_type_is_html(self, response):
+    def _content_type(self, response):
         content_type = response.headers.get("Content-Type", "")
-        content_type = content_type.split(";", 1)[0].strip().lower()
+        return content_type.split(";", 1)[0].strip().lower()
+
+    def _content_type_is_html(self, response):
+        content_type = self._content_type(response)
         return any(
             content_type.startswith(expected)
             for expected in HTML_CONTENT_TYPES
         )
+
+    def _content_type_is_media(self, response):
+        content_type = self._content_type(response)
+        return any(
+            content_type.startswith(expected)
+            for expected in MEDIA_CONTENT_TYPE_PREFIXES
+        )
+
+    def _format_byte_size(self, num_bytes):
+        size = float(num_bytes)
+        for unit in ("B", "KB", "MB", "GB"):
+            if size < 1024 or unit == "GB":
+                if unit == "B":
+                    return f"{int(size)} {unit}"
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} GB"
+
+    def _describe_media_response(self, response):
+        content_type = self._content_type(response)
+        content_length = response.headers.get("Content-Length")
+        size_text = None
+        if content_length:
+            try:
+                size_text = self._format_byte_size(int(content_length))
+            except (TypeError, ValueError):
+                size_text = None
+        if size_text:
+            return f"Title: {content_type} ({size_text})"
+        return f"Title: {content_type}"
 
     def _read_limited_response(self, response, max_bytes):
         content_length = response.headers.get("Content-Length")
@@ -654,6 +692,12 @@ class URLtitle(callbacks.Plugin):
                 )
 
             if not self._content_type_is_html(response):
+                if self._content_type_is_media(response):
+                    media_title = self._describe_media_response(response)
+                    self._store_cached_title(url, media_title, resolved_url)
+                    if return_resolved_url:
+                        return media_title, resolved_url
+                    return media_title
                 self.log.debug(
                     "URL fetch returned non-HTML content for %s",
                     self._safe_url_for_log(resolved_url),

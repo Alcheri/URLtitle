@@ -105,6 +105,47 @@ class URLtitleTestCase(unittest.TestCase):
             result, "Title for https://example.com/no-title: No title found"
         )
 
+    @patch("URLtitle.plugin.URLtitle._http_get")
+    def testFetchTitleDescribesDirectImageLink(self, mock_get):
+        response = MagicMock()
+        response.headers = {
+            "Content-Type": "image/jpeg",
+            "Content-Length": "245000",
+        }
+        response.encoding = "utf-8"
+        response.is_redirect = False
+        response.url = "https://i.redd.it/o2fm4dp518911.jpg"
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title(
+                    "https://i.redd.it/o2fm4dp518911.jpg"
+                )
+
+        self.assertEqual(result, "Title: image/jpeg (239.3 KB)")
+
+    @patch("URLtitle.plugin.URLtitle._http_get")
+    def testFetchTitleDescribesImageWithoutContentLength(self, mock_get):
+        response = MagicMock()
+        response.headers = {"Content-Type": "image/png"}
+        response.encoding = "utf-8"
+        response.is_redirect = False
+        response.url = "https://example.com/pic.png"
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                result = self.plugin.fetch_title("https://example.com/pic.png")
+
+        self.assertEqual(result, "Title: image/png")
+
     @patch(
         "URLtitle.plugin.URLtitle._http_get",
         side_effect=RequestException("boom"),
