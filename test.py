@@ -244,6 +244,37 @@ class URLtitleTestCase(unittest.TestCase):
             BLOCKED_HTTP_ERROR_TITLE, to="#chan"
         )
 
+    def testFetchTitleUsesImdbSuggestionApi(self):
+        response = MagicMock()
+        response.headers = {"Content-Type": "application/json"}
+        response.encoding = "utf-8"
+        response.raise_for_status.return_value = None
+        response.iter_content.return_value = [
+            b'{"d":[{"id":"tt0116695","l":"Jerry Maguire","y":1996}]}'
+        ]
+        with patch.object(
+            self.plugin, "registryValue", side_effect=self._registry_value
+        ):
+            with patch.object(self.plugin, "_url_is_safe", return_value=True):
+                with patch.object(
+                    self.plugin, "_http_get", return_value=response
+                ) as mock_get:
+                    result = self.plugin.fetch_title(
+                        "https://www.imdb.com/title/tt0116695/"
+                    )
+
+        self.assertEqual(result, "Jerry Maguire (1996) - IMDb")
+        self.assertEqual(mock_get.call_count, 1)
+        self.assertIn("tt0116695", mock_get.call_args.args[0])
+
+    def testImdbTitleIdIgnoresNonTitleUrls(self):
+        self.assertIsNone(
+            self.plugin._imdb_title_id("https://www.imdb.com/name/nm0000129/")
+        )
+        self.assertIsNone(
+            self.plugin._imdb_title_id("https://example.com/title/tt0116695/")
+        )
+
     def testFetchTitlePrefixesYoutubeTitle(self):
         with patch.object(
             self.plugin, "registryValue", side_effect=self._registry_value

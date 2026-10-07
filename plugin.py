@@ -73,6 +73,9 @@ YOUTUBE_HOSTS = (
     "m.youtube.com",
 )
 YOUTUBE_OEMBED_URL = "https://www.youtube.com/oembed"
+IMDB_HOSTS = ("imdb.com", "www.imdb.com", "m.imdb.com")
+IMDB_TITLE_PATH_RE = re.compile(r"^/title/(tt\d+)(?:/|$)")
+IMDB_SUGGESTION_URL = "https://v3.sg.media-imdb.com/suggestion/t/{}.json"
 YOUTUBE_PLAY_PREFIX = f"{ircutils.mircColor('▶', 'red')} "
 
 SUPPORTED_SHORTENER_HOSTS = (
@@ -394,6 +397,54 @@ class URLtitle(callbacks.Plugin):
     def _is_youtube_url(self, url):
         return self._hostname_for_url(url) in YOUTUBE_HOSTS
 
+    def _imdb_title_id(self, url):
+        if self._hostname_for_url(url) not in IMDB_HOSTS:
+            return None
+        match = IMDB_TITLE_PATH_RE.match(urlparse(url).path)
+        return match.group(1) if match else None
+
+    def _fetch_imdb_title(self, url):
+        """Use IMDb's suggestion API, as title pages sit behind a bot challenge."""
+        title_id = self._imdb_title_id(url)
+        if not title_id:
+            return None
+        api_url = IMDB_SUGGESTION_URL.format(title_id)
+        if not self._url_is_safe(api_url):
+            return None
+
+        try:
+            response = self._http_get(
+                api_url,
+                headers=self._request_headers(),
+                timeout=REQUEST_TIMEOUT_SECONDS,
+                stream=True,
+            )
+            response.raise_for_status()
+            body = self._read_limited_response(
+                response, self._max_response_bytes()
+            )
+            if body is None:
+                self.log.debug("IMDb suggestion response exceeded size limit.")
+                return None
+            data = json.loads(body)
+            for entry in data.get("d", []):
+                if entry.get("id") != title_id:
+                    continue
+                title = self._clean_text(entry.get("l", ""), MAX_TITLE_LENGTH)
+                if not title:
+                    return None
+                year = entry.get("yr") or entry.get("y")
+                if year:
+                    title = f"{title} ({year})"
+                return f"{title} - IMDb"
+        except (RequestException, ValueError, AttributeError) as e:
+            self.log.debug(
+                "IMDb suggestion lookup failed for %s: %s",
+                self._safe_url_for_log(url),
+                e.__class__.__name__,
+            )
+        return None
+
     def _fetch_youtube_title(self, url):
         """Use YouTube's oEmbed API to get the real video title."""
         if not self._url_is_safe(url):
@@ -628,6 +679,14 @@ class URLtitle(callbacks.Plugin):
                 if return_resolved_url:
                     return yt_title, url
                 return yt_title
+
+        # IMDb title pages are behind a bot challenge, so use its public API.
+        imdb_title = self._fetch_imdb_title(url)
+        if imdb_title:
+            self._store_cached_title(url, imdb_title, url)
+            if return_resolved_url:
+                return imdb_title, url
+            return imdb_title
 
         try:
             current_url = url
